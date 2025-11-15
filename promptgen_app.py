@@ -18,7 +18,14 @@ Workflow:
 # 1. Import Libraries and Setup
 # ============================================================================
 
-import google.generativeai as genai
+try:
+    import google.generativeai as genai
+except ImportError:
+    raise ImportError(
+        "google-generativeai package is not installed. "
+        "Please install it using: pip install google-generativeai"
+    )
+
 import os
 import json
 import re
