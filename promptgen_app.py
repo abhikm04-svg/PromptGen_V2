@@ -38,32 +38,15 @@ from datetime import datetime
 # ============================================================================
 
 def get_api_key():
-    """Get API key from Streamlit secrets, environment variable, or return None"""
-    try:
-        # Try to import streamlit (only works in Streamlit environment)
-        import streamlit as st
-        if hasattr(st, 'secrets') and 'GOOGLE_API_KEY' in st.secrets:
-            return st.secrets['GOOGLE_API_KEY']
-    except ImportError:
-        # Not in Streamlit environment, continue to other methods
-        pass
-    except Exception:
-        # Streamlit not available or other error
-        pass
-    
-    # Fallback to environment variable
+    """Get API key from environment variable (for non-Streamlit usage)"""
     return os.getenv('GOOGLE_API_KEY', None)
 
+# Don't configure API key at module level for Streamlit apps
+# It will be configured in main() function from Streamlit secrets
+# For non-Streamlit usage, configure from environment variable
 GOOGLE_API_KEY = get_api_key()
-
-if not GOOGLE_API_KEY:
-    print("Warning: API key not found. Please set it in:")
-    print("  1. Streamlit secrets (st.secrets['GOOGLE_API_KEY'])")
-    print("  2. Environment variable (GOOGLE_API_KEY)")
-    print("  3. Or set GOOGLE_API_KEY directly in this file")
-    GOOGLE_API_KEY = 'YOUR_API_KEY_HERE'  # Fallback for testing
-
-genai.configure(api_key=GOOGLE_API_KEY)
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
 
 # Model configurations
 # Note: Model names may need to be adjusted based on available models in the API
@@ -635,11 +618,135 @@ def run_example():
     return results
 
 # ============================================================================
-# Main Entry Point
+# Main Entry Point - Streamlit App
 # ============================================================================
 
+def main():
+    """Main Streamlit application"""
+    try:
+        import streamlit as st
+    except ImportError:
+        print("Streamlit is not installed. This is a Streamlit application.")
+        return
+    
+    # Configure API key from Streamlit secrets
+    if 'GOOGLE_API_KEY' in st.secrets:
+        genai.configure(api_key=st.secrets['GOOGLE_API_KEY'])
+    else:
+        st.error("⚠️ Please configure GOOGLE_API_KEY in Streamlit secrets")
+        st.stop()
+    
+    # Initialize session state
+    if 'workflow' not in st.session_state:
+        st.session_state.workflow = initialize_workflow()
+        st.session_state.stage = 'idea'
+        st.session_state.questions = []
+        st.session_state.results = None
+    
+    # Stage 1: Get user idea
+    if st.session_state.stage == 'idea':
+        st.title("🧙 Prompt Optimizer")
+        st.markdown("Welcome! I'm your prompt wizard. Let's create the perfect prompt together.")
+        
+        user_idea = st.text_area(
+            'Enter your prompt idea:',
+            placeholder="e.g., I want to create a prompt for writing engaging blog posts about technology...",
+            height=100
+        )
+        
+        if st.button('Generate Clarification Questions', type='primary'):
+            if user_idea.strip():
+                with st.spinner('Generating clarification questions...'):
+                    try:
+                        questions = get_clarification_questions(st.session_state.workflow, user_idea)
+                        st.session_state.questions = questions
+                        st.session_state.stage = 'questions'
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error generating questions: {str(e)}")
+            else:
+                st.warning("Please enter a prompt idea first.")
+    
+    # Stage 2: Answer clarification questions
+    elif st.session_state.stage == 'questions':
+        st.title("📝 Answer Clarification Questions")
+        st.markdown("Please answer the following questions to help me create the perfect prompt:")
+        
+        answers = {}
+        for i, question in enumerate(st.session_state.questions, 1):
+            answer = st.text_input(
+                f'**Question {i}:** {question}',
+                key=f'answer_{i}',
+                placeholder="Your answer here..."
+            )
+            if answer:
+                answers[question] = answer
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button('← Back to Idea'):
+                st.session_state.stage = 'idea'
+                st.rerun()
+        
+        with col2:
+            if st.button('Submit Answers & Optimize →', type='primary'):
+                if len(answers) == len(st.session_state.questions):
+                    with st.spinner('Optimizing prompt... This may take a few minutes. Please wait...'):
+                        try:
+                            results = process_answers_and_optimize(st.session_state.workflow, answers)
+                            st.session_state.results = results
+                            st.session_state.stage = 'results'
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error during optimization: {str(e)}")
+                else:
+                    st.warning("Please answer all questions before submitting.")
+    
+    # Stage 3: Display results
+    elif st.session_state.stage == 'results':
+        st.title("✨ Final Optimized Prompt")
+        
+        results = st.session_state.results
+        
+        # Display score and metrics
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Final Score", f"{results['final_score']}/100")
+        with col2:
+            st.metric("Iterations", results['iterations'])
+        with col3:
+            st.metric("Status", "✓ Converged" if results['converged'] else "⚠ Max Iterations")
+        
+        # Display final prompt
+        st.subheader("📄 Your Optimized Prompt:")
+        st.code(results['final_prompt'], language='xml')
+        
+        # Download button
+        st.download_button(
+            label="📥 Download Prompt",
+            data=results['final_prompt'],
+            file_name="optimized_prompt.xml",
+            mime="text/xml"
+        )
+        
+        # Show iteration history in expander
+        with st.expander("📊 View Iteration History"):
+            for hist in results['history']:
+                st.markdown(f"**Iteration {hist['iteration']}** - Score: {hist['score']}/100")
+                with st.expander(f"View details for iteration {hist['iteration']}"):
+                    st.markdown("**Prompt:**")
+                    st.code(hist['prompt'], language='xml')
+                    st.markdown("**Output:**")
+                    st.text(hist['output'][:500] + "..." if len(hist['output']) > 500 else hist['output'])
+                    st.markdown("**Feedback:**")
+                    st.text(hist['feedback'])
+        
+        # Start over button
+        if st.button('🔄 Start Over', type='primary'):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+
 if __name__ == "__main__":
-    # Uncomment to run example:
-    # results = run_example()
-    pass
+    main()
 
