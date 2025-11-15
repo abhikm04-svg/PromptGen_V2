@@ -74,7 +74,7 @@ ANALYZER_MODEL = 'gemini-2.5-pro'  # Using pro for analysis
 
 # Workflow settings
 MAX_ITERATIONS = 15
-TARGET_SCORE = 100
+TARGET_SCORE = 101
 
 # ============================================================================
 # 3. Data Classes for State Management
