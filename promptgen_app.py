@@ -757,11 +757,8 @@ def main():
         st.session_state.stage = 'idea'
         st.session_state.questions = []
         st.session_state.results = None
-        st.session_state.terminal_output = ""
         st.session_state.token_data = []
-        st.session_state.current_status = ""
-        st.session_state.is_thinking = False
-    
+
     # Stage 1: Get user idea
     if st.session_state.stage == 'idea':
         st.title("🧙 Prompt Optimizer")
@@ -775,78 +772,20 @@ def main():
         
         if st.button('Generate Clarification Questions', type='primary'):
             if user_idea.strip():
-                st.session_state.is_thinking = True
-                st.session_state.token_data = []
-                
-                # Create layout for thinking status and ASCII animation
-                status_placeholder = st.empty()
-                animation_placeholder = st.empty()
-                
-                # ASCII animation frames
-                spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-                frame_index = 0
-                
-                def update_animation():
-                    nonlocal frame_index
-                    frame = spinner_frames[frame_index % len(spinner_frames)]
-                    frame_index += 1
-                    animation_text = f"""
-```
-{frame} Thinking...
-    ╔═══════════════════════════════════════╗
-    ║   Generating clarification questions  ║
-    ║   Please wait while I analyze your    ║
-    ║   prompt idea...                       ║
-    ╚═══════════════════════════════════════╝
-```
-"""
-                    animation_placeholder.markdown(animation_text)
-                
-                def token_callback(timestamp, tokens, stage):
-                    st.session_state.token_data.append({
-                        'timestamp': timestamp,
-                        'tokens': tokens,
-                        'stage': stage
-                    })
-                
-                try:
-                    with status_placeholder.status("Thinking... Generating clarification questions", state="running"):
-                        # Show initial animation
-                        update_animation()
-                        
-                        # Start animation in background thread
-                        import threading
-                        import time as time_module
-                        stop_animation = threading.Event()
-                        
-                        def animate():
-                            while not stop_animation.is_set():
-                                try:
-                                    update_animation()
-                                    time_module.sleep(0.1)
-                                except:
-                                    break
-                        
-                        anim_thread = threading.Thread(target=animate, daemon=True)
-                        anim_thread.start()
-                        
-                        try:
-                            questions = get_clarification_questions(
-                                st.session_state.workflow, 
-                                user_idea,
-                                None  # No stream callback
-                            )
-                        finally:
-                            stop_animation.set()
-                            time_module.sleep(0.2)  # Let animation stop
-                        
+                with st.status("Thinking... Generating clarification questions", state="running") as status:
+                    try:
+                        questions = get_clarification_questions(
+                            st.session_state.workflow,
+                            user_idea
+                        )
                         st.session_state.questions = questions
-                        st.session_state.is_thinking = False
                         st.session_state.stage = 'questions'
+                        status.update(label="Questions generated!", state="complete")
+                        time.sleep(1)
                         st.rerun()
-                except Exception as e:
-                    st.session_state.is_thinking = False
-                    st.error(f"Error generating questions: {str(e)}")
+                    except Exception as e:
+                        status.update(label="Error generating questions!", state="error")
+                        st.error(f"Error: {str(e)}")
             else:
                 st.warning("Please enter a prompt idea first.")
     
@@ -874,54 +813,12 @@ def main():
         with col2:
             if st.button('Submit Answers & Optimize →', type='primary'):
                 if len(answers) == len(st.session_state.questions):
-                    st.session_state.is_thinking = True
                     st.session_state.token_data = []
                     
-                    # Create layout for thinking status and ASCII animation
-                    status_placeholder = st.empty()
-                    animation_placeholder = st.empty()
-                    
-                    # ASCII animation frames - more elaborate for optimization
-                    spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
-                    animation_stages = [
-                        "Analyzing your requirements...",
-                        "Generating optimized prompt...",
-                        "Testing prompt effectiveness...",
-                        "Evaluating results...",
-                        "Refining for perfection..."
-                    ]
-                    frame_index = 0
-                    stage_index = 0
-                    
-                    def update_animation():
-                        nonlocal frame_index, stage_index
-                        frame = spinner_frames[frame_index % len(spinner_frames)]
-                        frame_index += 1
-                        # Change stage every 20 frames
-                        if frame_index % 20 == 0:
-                            stage_index = (stage_index + 1) % len(animation_stages)
-                        
-                        current_stage = animation_stages[stage_index]
-                        animation_text = f"""
-```
-{frame} Thinking...
-    ╔═══════════════════════════════════════╗
-    ║   Optimizing Your Prompt              ║
-    ║                                       ║
-    ║   {current_stage:<37}║
-    ║                                       ║
-    ║   This may take a few minutes...      ║
-    ╚═══════════════════════════════════════╝
-    
-    Progress: {'█' * ((frame_index % 40) // 4) + '░' * (10 - (frame_index % 40) // 4)}
-```
-"""
-                        animation_placeholder.markdown(animation_text)
-                    
                     def status_callback(status):
-                        st.session_state.current_status = status
-                        status_placeholder.status(f" {status}", state="running")
-                    
+                        # This will be called from the workflow to update the status
+                        st.session_state.current_status_label = status
+
                     def token_callback(timestamp, tokens, stage):
                         st.session_state.token_data.append({
                             'timestamp': timestamp,
@@ -930,44 +827,23 @@ def main():
                         })
                     
                     try:
-                        with status_placeholder.status("Thinking... Starting optimization", state="running"):
-                            # Show initial animation
-                            update_animation()
-                            
-                            # Start animation in background thread
-                            import threading
-                            import time as time_module
-                            stop_animation = threading.Event()
-                            
-                            def animate():
-                                while not stop_animation.is_set():
-                                    try:
-                                        update_animation()
-                                        time_module.sleep(0.15)
-                                    except:
-                                        break
-                            
-                            anim_thread = threading.Thread(target=animate, daemon=True)
-                            anim_thread.start()
-                            
-                            try:
-                                results = process_answers_and_optimize(
-                                    st.session_state.workflow, 
-                                    answers,
-                                    None,  # No stream callback
-                                    status_callback,
-                                    token_callback
-                                )
-                            finally:
-                                stop_animation.set()
-                                time_module.sleep(0.2)  # Let animation stop
-                            
+                        with st.status("Thinking... Starting optimization", state="running") as status:
+                            def status_callback_for_spinner(status_text):
+                                status.update(label=status_text)
+
+                            results = process_answers_and_optimize(
+                                st.session_state.workflow,
+                                answers,
+                                stream_callback=None,
+                                status_callback=status_callback_for_spinner,
+                                token_callback=token_callback
+                            )
                             st.session_state.results = results
-                            st.session_state.is_thinking = False
                             st.session_state.stage = 'results'
+                            status.update(label="Optimization complete!", state="complete")
+                            time.sleep(1)
                             st.rerun()
                     except Exception as e:
-                        st.session_state.is_thinking = False
                         st.error(f"Error during optimization: {str(e)}")
                 else:
                     st.warning("Please answer all questions before submitting.")
