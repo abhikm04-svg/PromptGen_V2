@@ -30,6 +30,7 @@ import os
 import json
 import re
 import time
+import html
 from typing import Dict, List, Tuple, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -37,6 +38,17 @@ try:
     import pandas as pd
 except ImportError:
     pd = None  # pandas will be available in Streamlit environment
+
+try:
+    import matplotlib
+    matplotlib.use('Agg')  # Use non-interactive backend
+    import matplotlib.pyplot as plt
+    import io
+    HAS_MATPLOTLIB = True
+except ImportError:
+    HAS_MATPLOTLIB = False
+    plt = None
+    io = None
 
 # ============================================================================
 # 2. Configuration
@@ -767,22 +779,38 @@ def main():
                 st.session_state.terminal_output = ""
                 st.session_state.token_data = []
                 
-                # Create layout for thinking status, terminal, and graph
-                status_col, _ = st.columns([3, 1])
+                # Create layout for thinking status and terminal (full width)
+                status_placeholder = st.empty()
                 
-                with status_col:
-                    status_placeholder = st.empty()
-                    terminal_placeholder = st.empty()
+                # Terminal with fixed height and scrolling
+                terminal_placeholder = st.empty()
                 
-                # Token graph placeholder
-                graph_placeholder = st.empty()
+                # Add custom CSS for fixed height terminal with scrolling
+                st.markdown("""
+                    <style>
+                    .terminal-container {
+                        height: 4in;
+                        max-height: 4in;
+                        overflow-y: auto;
+                        overflow-x: hidden;
+                        background-color: #1e1e1e;
+                        border-radius: 5px;
+                        padding: 10px;
+                        border: 1px solid #3c3c3c;
+                    }
+                    </style>
+                """, unsafe_allow_html=True)
                 
                 def stream_callback(text, agent_type="default"):
                     st.session_state.terminal_output += text
-                    terminal_placeholder.code(
-                        st.session_state.terminal_output,
-                        language='text',
-                        line_numbers=False
+                    # Limit terminal output to last 20000 chars for performance
+                    display_text = st.session_state.terminal_output[-20000:]
+                    # Escape HTML for security
+                    escaped_text = html.escape(display_text)
+                    # Use markdown with custom styling for fixed height scrolling
+                    terminal_placeholder.markdown(
+                        f'<div class="terminal-container"><pre style="color: #d4d4d4; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; margin: 0;">{escaped_text.replace(chr(10), "<br>")}</pre></div>',
+                        unsafe_allow_html=True
                     )
                 
                 def token_callback(timestamp, tokens, stage):
@@ -791,10 +819,6 @@ def main():
                         'tokens': tokens,
                         'stage': stage
                     })
-                    if st.session_state.token_data and pd is not None:
-                        df = pd.DataFrame(st.session_state.token_data)
-                        df['cumulative'] = df['tokens'].cumsum()
-                        graph_placeholder.line_chart(df.set_index('timestamp')['cumulative'])
                 
                 try:
                     with status_placeholder.status("🤔 Thinking... Generating clarification questions", state="running"):
@@ -841,25 +865,38 @@ def main():
                     st.session_state.terminal_output = ""
                     st.session_state.token_data = []
                     
-                    # Create two-column layout: terminal on left, graph on right
-                    left_col, right_col = st.columns([2, 1])
+                    # Full width layout with fixed height terminal
+                    status_placeholder = st.empty()
                     
-                    with left_col:
-                        status_placeholder = st.empty()
-                        terminal_placeholder = st.empty()
+                    # Terminal with fixed height (4 inches = ~300px) and scrolling
+                    terminal_placeholder = st.empty()
                     
-                    with right_col:
-                        st.subheader("📊 Token Usage")
-                        graph_placeholder = st.empty()
+                    # Add custom CSS for fixed height terminal with scrolling
+                    st.markdown("""
+                        <style>
+                        .terminal-container {
+                            height: 4in;
+                            max-height: 4in;
+                            overflow-y: auto;
+                            overflow-x: hidden;
+                            background-color: #1e1e1e;
+                            border-radius: 5px;
+                            padding: 10px;
+                            border: 1px solid #3c3c3c;
+                        }
+                        </style>
+                    """, unsafe_allow_html=True)
                     
                     def stream_callback(text, agent_type="default"):
                         st.session_state.terminal_output += text
-                        # Limit terminal output to last 5000 chars for performance
-                        display_text = st.session_state.terminal_output[-5000:]
-                        terminal_placeholder.code(
-                            display_text,
-                            language='text',
-                            line_numbers=False
+                        # Limit terminal output to last 20000 chars for performance
+                        display_text = st.session_state.terminal_output[-20000:]
+                        # Escape HTML for security
+                        escaped_text = html.escape(display_text)
+                        # Use markdown with custom styling for fixed height scrolling
+                        terminal_placeholder.markdown(
+                            f'<div class="terminal-container"><pre style="color: #d4d4d4; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; margin: 0;">{escaped_text.replace(chr(10), "<br>")}</pre></div>',
+                            unsafe_allow_html=True
                         )
                     
                     def status_callback(status):
@@ -872,16 +909,6 @@ def main():
                             'tokens': tokens,
                             'stage': stage
                         })
-                        if st.session_state.token_data and pd is not None:
-                            df = pd.DataFrame(st.session_state.token_data)
-                            df['cumulative'] = df['tokens'].cumsum()
-                            # Create time-based index for better visualization
-                            if len(df) > 1:
-                                df['time_elapsed'] = (df['timestamp'] - df['timestamp'].iloc[0])
-                                graph_placeholder.line_chart(
-                                    df.set_index('time_elapsed')['cumulative'],
-                                    height=300
-                                )
                     
                     try:
                         with status_placeholder.status("🤔 Thinking... Starting optimization", state="running"):
@@ -921,13 +948,57 @@ def main():
         st.subheader("📄 Your Optimized Prompt:")
         st.code(results['final_prompt'], language='xml')
         
-        # Download button
-        st.download_button(
-            label="📥 Download Prompt",
-            data=results['final_prompt'],
-            file_name="optimized_prompt.xml",
-            mime="text/xml"
-        )
+        # Download buttons
+        col1, col2 = st.columns(2)
+        with col1:
+            st.download_button(
+                label="📥 Download Prompt",
+                data=results['final_prompt'],
+                file_name="optimized_prompt.xml",
+                mime="text/xml"
+            )
+        
+        with col2:
+            # Generate and download token usage graph
+            if st.session_state.token_data and pd is not None and HAS_MATPLOTLIB:
+                try:
+                    df = pd.DataFrame(st.session_state.token_data)
+                    df['cumulative'] = df['tokens'].cumsum()
+                    
+                    # Create time-based visualization
+                    if len(df) > 1:
+                        df['time_elapsed'] = (df['timestamp'] - df['timestamp'].iloc[0])
+                        
+                        # Create matplotlib figure
+                        fig, ax = plt.subplots(figsize=(10, 6))
+                        ax.plot(df['time_elapsed'], df['cumulative'], linewidth=2, color='#1f77b4')
+                        ax.fill_between(df['time_elapsed'], df['cumulative'], alpha=0.3, color='#1f77b4')
+                        ax.set_xlabel('Time Elapsed (seconds)', fontsize=12)
+                        ax.set_ylabel('Cumulative Tokens', fontsize=12)
+                        ax.set_title('Token Usage Over Time', fontsize=14, fontweight='bold')
+                        ax.grid(True, alpha=0.3)
+                        
+                        # Save to bytes buffer
+                        buf = io.BytesIO()
+                        plt.savefig(buf, format='png', dpi=150, bbox_inches='tight')
+                        buf.seek(0)
+                        plt.close(fig)
+                        
+                        st.download_button(
+                            label="📊 Download Token Usage Graph",
+                            data=buf,
+                            file_name="token_usage_graph.png",
+                            mime="image/png"
+                        )
+                    else:
+                        st.info("📊 Token usage data available but insufficient for graph")
+                except Exception as e:
+                    st.warning(f"Could not generate token graph: {str(e)}")
+            else:
+                if not st.session_state.token_data:
+                    st.info("📊 No token usage data available")
+                elif not HAS_MATPLOTLIB:
+                    st.info("📊 Install matplotlib to generate token usage graph")
         
         # Show iteration history in expander
         with st.expander("📊 View Iteration History"):
