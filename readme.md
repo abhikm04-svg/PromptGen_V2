@@ -1,7 +1,8 @@
-```
+<https://promptgen-gemini.streamlit.app/#prompt-optimizer>
 # 🧙 PromptGen V2: AI-Powered Prompt Optimizer
 
-PromptGen V2 is a sophisticated, multi-agent application designed to help you craft the perfect prompt for your use case. Using a collaborative workflow, this tool takes your initial idea and iteratively refines it into a high-quality, optimized prompt ready for use with powerful generative AI models like Google Gemini.
+PromptGen V2 is a sophisticated, multi-agent application designed to help you craft the perfect prompt for your use case. Using a collaborative workflow, 
+this tool takes your initial idea and iteratively refines it into a high-quality, optimized prompt ready for use with powerful generative AI models like Google Gemini.
 
 The application is built with Streamlit, providing an intuitive and interactive user interface to guide you through the prompt engineering process.
 
@@ -28,8 +29,9 @@ The application follows a structured workflow to ensure the best possible outcom
 2.  **Clarification**: The Question Generator agent asks 3-5 questions to gather details about your goal, audience, desired tone, and output format.
 3.  **Initial Generation**: Once you answer the questions, the Prompt Generator agent creates the first version of your prompt.
 4.  **Test & Analyze**: The Prompt Tester executes the prompt, and the Prompt Analyzer scores the result.
-5.  **Iterative Refinement**: If the score is below 100, the analyzer's feedback is fed back to the Prompt Generator to create an improved version. This loop continues for a set number of iterations or until the target score is achieved.
-6.  **Final Prompt**: The best prompt from the optimization loop is presented to you.
+5.  **Iterative Refinement**: If the score is below 100, the analyzer's feedback is fed back to the Prompt Generator to create an improved version.
+    This loop continues for a set number of iterations or until the target score is achieved.
+7.  **Final Prompt**: The best prompt from the optimization loop is presented to you.
 
 ## 🛠️ Tech Stack
 
@@ -76,5 +78,5 @@ The application should now be running in your web browser!
 
 ## 🤝 Contributing
 
-Contributions are welcome! If you have suggestions for improvements or new features, please feel free to open an issue or submit a pull request.
-```
+Contributions are welcome! If you have suggestions for improvements or new features, 
+please feel free to open an issue or submit a pull request.
