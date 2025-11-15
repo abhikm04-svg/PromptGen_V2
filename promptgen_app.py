@@ -776,42 +776,31 @@ def main():
         if st.button('Generate Clarification Questions', type='primary'):
             if user_idea.strip():
                 st.session_state.is_thinking = True
-                st.session_state.terminal_output = ""
                 st.session_state.token_data = []
                 
-                # Create layout for thinking status and terminal (full width)
+                # Create layout for thinking status and ASCII animation
                 status_placeholder = st.empty()
+                animation_placeholder = st.empty()
                 
-                # Terminal with fixed height and scrolling
-                terminal_placeholder = st.empty()
+                # ASCII animation frames
+                spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+                frame_index = 0
                 
-                # Add custom CSS for fixed height terminal with scrolling
-                st.markdown("""
-                    <style>
-                    .terminal-container {
-                        height: 4in;
-                        max-height: 4in;
-                        overflow-y: auto;
-                        overflow-x: hidden;
-                        background-color: #1e1e1e;
-                        border-radius: 5px;
-                        padding: 10px;
-                        border: 1px solid #3c3c3c;
-                    }
-                    </style>
-                """, unsafe_allow_html=True)
-                
-                def stream_callback(text, agent_type="default"):
-                    st.session_state.terminal_output += text
-                    # Limit terminal output to last 20000 chars for performance
-                    display_text = st.session_state.terminal_output[-20000:]
-                    # Escape HTML for security
-                    escaped_text = html.escape(display_text)
-                    # Use markdown with custom styling for fixed height scrolling
-                    terminal_placeholder.markdown(
-                        f'<div class="terminal-container"><pre style="color: #d4d4d4; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; margin: 0;">{escaped_text.replace(chr(10), "<br>")}</pre></div>',
-                        unsafe_allow_html=True
-                    )
+                def update_animation():
+                    nonlocal frame_index
+                    frame = spinner_frames[frame_index % len(spinner_frames)]
+                    frame_index += 1
+                    animation_text = f"""
+```
+{frame} Thinking...
+    ╔═══════════════════════════════════════╗
+    ║   Generating clarification questions  ║
+    ║   Please wait while I analyze your    ║
+    ║   prompt idea...                       ║
+    ╚═══════════════════════════════════════╝
+```
+"""
+                    animation_placeholder.markdown(animation_text)
                 
                 def token_callback(timestamp, tokens, stage):
                     st.session_state.token_data.append({
@@ -821,12 +810,36 @@ def main():
                     })
                 
                 try:
-                    with status_placeholder.status("🤔 Thinking... Generating clarification questions", state="running"):
-                        questions = get_clarification_questions(
-                            st.session_state.workflow, 
-                            user_idea,
-                            stream_callback
-                        )
+                    with status_placeholder.status("Thinking... Generating clarification questions", state="running"):
+                        # Show initial animation
+                        update_animation()
+                        
+                        # Start animation in background thread
+                        import threading
+                        import time as time_module
+                        stop_animation = threading.Event()
+                        
+                        def animate():
+                            while not stop_animation.is_set():
+                                try:
+                                    update_animation()
+                                    time_module.sleep(0.1)
+                                except:
+                                    break
+                        
+                        anim_thread = threading.Thread(target=animate, daemon=True)
+                        anim_thread.start()
+                        
+                        try:
+                            questions = get_clarification_questions(
+                                st.session_state.workflow, 
+                                user_idea,
+                                None  # No stream callback
+                            )
+                        finally:
+                            stop_animation.set()
+                            time_module.sleep(0.2)  # Let animation stop
+                        
                         st.session_state.questions = questions
                         st.session_state.is_thinking = False
                         st.session_state.stage = 'questions'
@@ -862,46 +875,52 @@ def main():
             if st.button('Submit Answers & Optimize →', type='primary'):
                 if len(answers) == len(st.session_state.questions):
                     st.session_state.is_thinking = True
-                    st.session_state.terminal_output = ""
                     st.session_state.token_data = []
                     
-                    # Full width layout with fixed height terminal
+                    # Create layout for thinking status and ASCII animation
                     status_placeholder = st.empty()
+                    animation_placeholder = st.empty()
                     
-                    # Terminal with fixed height (4 inches = ~300px) and scrolling
-                    terminal_placeholder = st.empty()
+                    # ASCII animation frames - more elaborate for optimization
+                    spinner_frames = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏']
+                    animation_stages = [
+                        "Analyzing your requirements...",
+                        "Generating optimized prompt...",
+                        "Testing prompt effectiveness...",
+                        "Evaluating results...",
+                        "Refining for perfection..."
+                    ]
+                    frame_index = 0
+                    stage_index = 0
                     
-                    # Add custom CSS for fixed height terminal with scrolling
-                    st.markdown("""
-                        <style>
-                        .terminal-container {
-                            height: 4in;
-                            max-height: 4in;
-                            overflow-y: auto;
-                            overflow-x: hidden;
-                            background-color: #1e1e1e;
-                            border-radius: 5px;
-                            padding: 10px;
-                            border: 1px solid #3c3c3c;
-                        }
-                        </style>
-                    """, unsafe_allow_html=True)
-                    
-                    def stream_callback(text, agent_type="default"):
-                        st.session_state.terminal_output += text
-                        # Limit terminal output to last 20000 chars for performance
-                        display_text = st.session_state.terminal_output[-20000:]
-                        # Escape HTML for security
-                        escaped_text = html.escape(display_text)
-                        # Use markdown with custom styling for fixed height scrolling
-                        terminal_placeholder.markdown(
-                            f'<div class="terminal-container"><pre style="color: #d4d4d4; font-family: monospace; white-space: pre-wrap; word-wrap: break-word; margin: 0;">{escaped_text.replace(chr(10), "<br>")}</pre></div>',
-                            unsafe_allow_html=True
-                        )
+                    def update_animation():
+                        nonlocal frame_index, stage_index
+                        frame = spinner_frames[frame_index % len(spinner_frames)]
+                        frame_index += 1
+                        # Change stage every 20 frames
+                        if frame_index % 20 == 0:
+                            stage_index = (stage_index + 1) % len(animation_stages)
+                        
+                        current_stage = animation_stages[stage_index]
+                        animation_text = f"""
+```
+{frame} Thinking...
+    ╔═══════════════════════════════════════╗
+    ║   Optimizing Your Prompt              ║
+    ║                                       ║
+    ║   {current_stage:<37}║
+    ║                                       ║
+    ║   This may take a few minutes...      ║
+    ╚═══════════════════════════════════════╝
+    
+    Progress: {'█' * ((frame_index % 40) // 4) + '░' * (10 - (frame_index % 40) // 4)}
+```
+"""
+                        animation_placeholder.markdown(animation_text)
                     
                     def status_callback(status):
                         st.session_state.current_status = status
-                        status_placeholder.status(f"🤔 {status}", state="running")
+                        status_placeholder.status(f" {status}", state="running")
                     
                     def token_callback(timestamp, tokens, stage):
                         st.session_state.token_data.append({
@@ -911,14 +930,38 @@ def main():
                         })
                     
                     try:
-                        with status_placeholder.status("🤔 Thinking... Starting optimization", state="running"):
-                            results = process_answers_and_optimize(
-                                st.session_state.workflow, 
-                                answers,
-                                stream_callback,
-                                status_callback,
-                                token_callback
-                            )
+                        with status_placeholder.status("Thinking... Starting optimization", state="running"):
+                            # Show initial animation
+                            update_animation()
+                            
+                            # Start animation in background thread
+                            import threading
+                            import time as time_module
+                            stop_animation = threading.Event()
+                            
+                            def animate():
+                                while not stop_animation.is_set():
+                                    try:
+                                        update_animation()
+                                        time_module.sleep(0.15)
+                                    except:
+                                        break
+                            
+                            anim_thread = threading.Thread(target=animate, daemon=True)
+                            anim_thread.start()
+                            
+                            try:
+                                results = process_answers_and_optimize(
+                                    st.session_state.workflow, 
+                                    answers,
+                                    None,  # No stream callback
+                                    status_callback,
+                                    token_callback
+                                )
+                            finally:
+                                stop_animation.set()
+                                time_module.sleep(0.2)  # Let animation stop
+                            
                             st.session_state.results = results
                             st.session_state.is_thinking = False
                             st.session_state.stage = 'results'
