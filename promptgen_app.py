@@ -762,7 +762,7 @@ def main():
     # Stage 1: Get user idea
     if st.session_state.stage == 'idea':
         st.title("🧙 Prompt Optimizer")
-        st.markdown("Welcome! I'm your prompt wizard. Let's create the perfect prompt together.")
+        st.markdown("Welcome! I'm Skadoosh! /n Your very own prompt wizard. Let's create the perfect prompt for your usecase.")
         
         user_idea = st.text_area(
             'Enter your prompt idea:',
