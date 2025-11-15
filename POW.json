@@ -1,0 +1,585 @@
+{
+  "name": "Prompt optimizer working",
+  "nodes": [
+    {
+      "parameters": {
+        "public": true,
+        "initialMessages": "Hi there!\nMy name is Skadoosh. Your very own prompt wizard. 🧙\nWhat can I help you build today?",
+        "options": {
+          "allowFileUploads": true,
+          "responseMode": "responseNodes"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        0,
+        128
+      ],
+      "id": "4af60d52-f642-45cf-8186-237dd22e01dd",
+      "name": "When chat message received",
+      "webhookId": "bec5d8d1-c9ad-4aad-bfe8-c8f904375f02",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        128,
+        368
+      ],
+      "id": "924df0b2-c71e-4cab-a233-c021c7c28556",
+      "name": "Google Gemini Chat Model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1IqOeed1O8cPXO2h",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a Question Generator AI agent. Your role is to help users define their prompt requirements by asking comprehensive, targeted questions.\n\nWhen a user shares their idea, ask 3 relevant questions to gather essential information:\n\n1. **Purpose & Goal**: What is the main objective or desired outcome?\n2. **Target Audience**: Who will be using or reading this content?\n3. **Tone & Style**: What tone should the output have? (formal, casual, technical, creative, etc.)\n4. **Context & Constraints**: Are there specific requirements, limitations, or guidelines to follow?\n5. **Output Format**: What format should the final output be in? (essay, bullet points, code, summary, etc.)\n6. **Key Elements**: What specific elements or information must be included?\n7. **Examples**: Are there any examples or references to follow?\n\nAsk these questions in a clear, conversational manner. Wait for the user's responses before proceeding. Your output should be ONLY the questions - do not create the prompt yet."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        224,
+        128
+      ],
+      "id": "1b06276e-119f-4678-bd02-4a176cc83642",
+      "name": "Question Generator"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        816,
+        352
+      ],
+      "id": "4bbfe603-ebfc-4fd7-b747-3ab74994b838",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1IqOeed1O8cPXO2h",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You are an expert prompt engineer. Based on the user's answers to the questions, create a comprehensive and well-structured prompt that addresses all the requirements. The prompt should be clear, specific, and optimized for achieving the user's goals. Include all relevant details about purpose, audience, tone, constraints, and desired output format. Return ONLY the created prompt text without any additional explanation. The prompt must be XML tagged. Below are the tags that you can use:\n<role> (Mandatory Tag)\n<context> (Mandatory Tag)\n<instructions> (Mandatory Tag)\n<skills> (Mandatory Tag)\n<areas of knowledge> (Mandatory Tag)\n<next steps> (Mandatory Tag)\n<personality and style> (Mandatory Tag)\n<output format> (Mandatory Tag)\n<audience> (Optional)\n<examples> (Optional)\n<dont's> (Optional)"
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        800,
+        128
+      ],
+      "id": "100ba93a-5563-43fe-9e68-783e8dbf27c9",
+      "name": "Prompt Creator"
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 50
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        944,
+        352
+      ],
+      "id": "f58c0e2d-38d4-4eb5-ae34-cb2255c4e3e4",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Your job is to take the created prompt [{{ $('Prompt Creator').item.json.output }}] and acting as an LLM model, run it in the attached LLM model and provide the prompt's output. No additional information, no chit chat and no fluff.",
+        "options": {
+          "systemMessage": "You are an experienced prompt tester and output provider.",
+          "maxIterations": 15,
+          "returnIntermediateSteps": true,
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1376,
+        128
+      ],
+      "id": "63fae218-d01e-41c4-a2bb-831a5ab0aa02",
+      "name": "Prompt tester"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1392,
+        352
+      ],
+      "id": "eb2be438-c825-41d7-ade7-27f849a10e27",
+      "name": "Google Gemini Chat Model2",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1IqOeed1O8cPXO2h",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "contextWindowLength": 50
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1536,
+        352
+      ],
+      "id": "7e43eb71-aa5b-41eb-9535-098e2256e62c",
+      "name": "Simple Memory1"
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        304,
+        400
+      ],
+      "id": "c5dfd781-230d-4f9b-8567-3bb3fd6b62ef",
+      "name": "Simple Memory2"
+    },
+    {
+      "parameters": {
+        "message": "={{ $json.output }}",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        576,
+        128
+      ],
+      "id": "b8451f0b-dfed-4334-b8fa-4db3f72597d3",
+      "name": "Respond to Chat"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You will take the prompt [{{ $('Prompt Creator').item.json.output }}] and benchmark it against the following parameters:\nClarity & Unambiguity: How easily understandable is the prompt's language and intent?\n\n1: Very ambiguous or confusing language.\n\n3: Mostly clear, but requires some interpretation.\n\n5: Perfectly clear, intent is obvious.\n\nSpecificity & Detail: How precisely does the prompt define the desired outcome and its characteristics?\n\n1: Very vague, lacks necessary details.\n\n3: Moderately specific, includes some key details.\n\n5: Highly specific, provides comprehensive details about the desired output.\n\nContextual Sufficiency: Does the prompt provide all necessary background information for the AI to understand the task domain?\n\n1: Lacks critical context, making the task difficult to perform accurately.\n\n3: Provides some necessary context, but gaps remain.\n\n5: Provides all relevant context required for the task.\n\nConstraint Definition: How clearly are limitations (e.g., length, format, tone, exclusions, required elements) stated?\n\n1: No constraints defined, or constraints are unclear.\n\n3: Some relevant constraints are mentioned but may be incomplete or slightly ambiguous.\n\n5: All relevant constraints are clearly and explicitly defined.\n\nRole/Persona Clarity: If a specific role or persona for the AI is requested, how clearly is it defined? (Score NA if no role is needed).\n\n1: Role is undefined or very confusing.\n\n3: Role is mentioned but lacks detail or nuance.\n\n5: Role is clearly defined with sufficient detail to guide the AI's perspective.\n\nTask Definition: How clearly is the primary goal or task articulated? What should the AI do?\n\n1: The core task is unclear or poorly defined.\n\n3: The task is generally understandable but could be more precise.\n\n5: The task is explicitly and accurately defined.\n\nConciseness & Efficiency: Is the prompt free from irrelevant information, redundancy, or excessive length?\n\n1: Very verbose, contains significant irrelevant information.\n\n3: Mostly concise, with minor irrelevant parts.\n\n5: Optimally concise, containing only necessary information.\n\nStructural Organization: Is the prompt logically structured (e.g., using formatting, clear separation of instructions)?\n\n1: Disorganized, hard to follow instructions.\n\n3: Moderately organized, structure could be improved.\n\n5: Well-structured, logical flow, easy to parse.\n\nInstructional Effectiveness: How likely are the specific instructions and phrasing to lead directly to the desired output, minimizing potential misinterpretation?\n\n1: Instructions are likely to be misinterpreted or fail.\n\n3: Instructions are somewhat effective but could lead to deviations.\n\n5: Instructions are highly effective and precisely guide the AI.\n\nTone/Style Guidance: How clearly is the desired tone (e.g., formal, friendly, technical) or writing style (e.g., simple, academic, bullet points) specified? (Score NA if not relevant).\n\n1: No guidance, or guidance is vague/contradictory.\n\n3: Some guidance provided, but could be more specific.\n\n5: Clear, specific, and consistent guidance on tone/style.\n\nNext you will take the prompt output [{{ $json.output }}] and benchmark it against the following parameters:\n\nRelevance to Prompt: How directly does the output address the core request and topic of the prompt?\n\n1: Off-topic or completely misses the prompt's intent.\n\n3: Partially relevant, addresses some aspects but deviates or includes irrelevant info.\n\n5: Directly and fully relevant to the prompt's core request.\n\nFactual Accuracy: How correct is the factual information presented in the output? (Score NA if subjective/creative).\n\n1: Contains significant factual errors or hallucinations.\n\n3: Mostly accurate, but contains minor inaccuracies.\n\n5: Completely factually accurate.\n\nCompleteness of Response: Does the output address all explicit and implicit requirements, questions, or parts of the prompt?\n\n1: Misses major requirements or questions asked.\n\n3: Addresses most requirements but omits minor aspects.\n\n5: Fully addresses all requirements specified in the prompt.\n\nCoherence & Logical Flow: Is the output well-organized, with logical connections between ideas/sentences/paragraphs?\n\n1: Incoherent, disjointed, very difficult to follow.\n\n3: Mostly coherent, but some transitions or points are unclear.\n\n5: Very coherent, logical flow, easy to follow.\n\nClarity & Readability: Is the language used clear, grammatically correct, and easy for the target audience to understand?\n\n1: Very difficult to understand, poor grammar, confusing language.\n\n3: Mostly clear, but some awkward phrasing or minor grammatical errors.\n\n5: Very clear, well-written, and easily readable.\n\nConstraint Adherence: Does the output respect all constraints (length, format, style, exclusions) specified in the prompt?\n\n1: Ignores most or all specified constraints.\n\n3: Meets some constraints but violates others.\n\n5: Meets all specified constraints perfectly.\n\nTone & Style Consistency: Does the output consistently match the tone and style requested (or implied) by the prompt?\n\n1: Uses a completely inappropriate tone/style or is highly inconsistent.\n\n3: Mostly matches the requested tone/style but has inconsistencies.\n\n5: Perfectly and consistently matches the requested tone/style.\n\nFormatting & Presentation: Is the output presented in a clean, usable, and readable format (using markdown, lists, code blocks, etc., appropriately)?\n\n1: Poor or absent formatting, difficult to read/use.\n\n3: Adequate formatting, generally readable.\n\n5: Excellent formatting and presentation enhances readability and usability.\n\nDepth & Elaboration: Does the output provide sufficient detail, explanation, or depth appropriate for the prompt's request? (Consider if the prompt asked for brevity vs. detail).\n\n1: Too superficial, lacks necessary detail or explanation.\n\n3: Provides adequate depth for the request.\n\n5: Provides comprehensive and insightful detail, exceeding expectations where appropriate.\n\nHelpfulness & Actionability: How well does the output actually achieve the underlying goal of the prompt? Is it useful, practical, or actionable?\n\n1: Not helpful, doesn't achieve the prompt's goal.\n\n3: Somewhat helpful, partially achieves the goal.\n\n5: Very helpful, effectively achieves the prompt's goal, potentially offering extra value.\n\nBased on your evaluation, rate the prompts effectiveness on a scale of 1 to 10 with 10 being perfect and 1 being completely unusable. Be extremely sctrict during benchmarking  you should ensure that the prompt is absolutely perfect. Only output the score and your feedback on how to improve the prompt. No additional information is required.",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert prompt engineer and feedback provider.",
+          "maxIterations": 15,
+          "returnIntermediateSteps": true,
+          "enableStreaming": true
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [
+        1792,
+        128
+      ],
+      "id": "3e8c7517-57fd-47b8-9813-9993de8b3a65",
+      "name": "Feedback Analyzer"
+    },
+    {
+      "parameters": {
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1712,
+        352
+      ],
+      "id": "56a73007-a63d-4e59-aff5-71ef11c94feb",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1IqOeed1O8cPXO2h",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1872,
+        352
+      ],
+      "id": "c83a1621-9350-4762-b3ad-9365dbc4a638",
+      "name": "Simple Memory3"
+    },
+    {
+      "parameters": {
+        "batchSize": 15,
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        1152,
+        128
+      ],
+      "id": "15d4184a-b25b-4cc4-91bf-d417f144cfce",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9fb898c1-ae22-4fc7-b453-242f6ac056dc",
+              "leftValue": "={{ $json.output[0] }}",
+              "rightValue": "Score: 10",
+              "operator": {
+                "type": "string",
+                "operation": "equals",
+                "name": "filter.operator.equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {
+          "ignoreCase": true
+        }
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2192,
+        128
+      ],
+      "id": "15e97c4b-76a4-457a-a7cc-346d6dfddb17",
+      "name": "If",
+      "retryOnFail": true,
+      "executeOnce": false
+    },
+    {
+      "parameters": {
+        "options": {
+          "numberOfItems": -1
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserItemList",
+      "typeVersion": 1,
+      "position": [
+        2016,
+        352
+      ],
+      "id": "1d359389-7cb7-4118-8482-bf750682e52d",
+      "name": "Item List Output Parser"
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "models/gemini-2.5-pro",
+          "mode": "list",
+          "cachedResultName": "models/gemini-2.5-pro"
+        },
+        "messages": {
+          "values": [
+            {
+              "content": "=You are an expert prompt engineer and optimizer. Your job is to modify this prompt [{{ $('Prompt Creator').item.json.output }}] based onn this feedback [{{ $('Feedback Analyzer').item.json.output[2] }}] so that it can score a perfect 10/10 on the below parameters.\n\nPrompt Benchmark Attributes\n# Clarity & Unambiguity: How easily understandable is the prompt's language and intent?\n\n1: Very ambiguous or confusing language.\n\n3: Mostly clear, but requires some interpretation.\n\n5: Perfectly clear, intent is obvious.\n\n# Specificity & Detail: How precisely does the prompt define the desired outcome and its characteristics?\n\n1: Very vague, lacks necessary details.\n\n3: Moderately specific, includes some key details.\n\n5: Highly specific, provides comprehensive details about the desired output.\n\n# Contextual Sufficiency: Does the prompt provide all necessary background information for the AI to understand the task domain?\n\n1: Lacks critical context, making the task difficult to perform accurately.\n\n3: Provides some necessary context, but gaps remain.\n\n5: Provides all relevant context required for the task.\n\n# Constraint Definition: How clearly are limitations (e.g., length, format, tone, exclusions, required elements) stated?\n\n1: No constraints defined, or constraints are unclear.\n\n3: Some relevant constraints are mentioned but may be incomplete or slightly ambiguous.\n\n5: All relevant constraints are clearly and explicitly defined.\n\n# Role/Persona Clarity: If a specific role or persona for the AI is requested, how clearly is it defined? (Score NA if no role is needed).\n\n1: Role is undefined or very confusing.\n\n3: Role is mentioned but lacks detail or nuance.\n\n5: Role is clearly defined with sufficient detail to guide the AI's perspective.\n\n# Task Definition: How clearly is the primary goal or task articulated? What should the AI do?\n\n1: The core task is unclear or poorly defined.\n\n3: The task is generally understandable but could be more precise.\n\n5: The task is explicitly and accurately defined.\n\n# Conciseness & Efficiency: Is the prompt free from irrelevant information, redundancy, or excessive length?\n\n1: Very verbose, contains significant irrelevant information.\n\n3: Mostly concise, with minor irrelevant parts.\n\n5: Optimally concise, containing only necessary information.\n\n# Structural Organization: Is the prompt logically structured (e.g., using formatting, clear separation of instructions)?\n\n1: Disorganized, hard to follow instructions.\n\n3: Moderately organized, structure could be improved.\n\n5: Well-structured, logical flow, easy to parse.\n\n# Instructional Effectiveness: How likely are the specific instructions and phrasing to lead directly to the desired output, minimizing potential misinterpretation?\n\n1: Instructions are likely to be misinterpreted or fail.\n\n3: Instructions are somewhat effective but could lead to deviations.\n\n5: Instructions are highly effective and precisely guide the AI.\n\n# Tone/Style Guidance: How clearly is the desired tone (e.g., formal, friendly, technical) or writing style (e.g., simple, academic, bullet points) specified? (Score NA if not relevant).\n\n1: No guidance, or guidance is vague/contradictory.\n\n3: Some guidance provided, but could be more specific.\n\n5: Clear, specific, and consistent guidance on tone/style.\n\nThe prompt must be XML tagged. Below are the tags that you can use:\n<role> (Mandatory Tag)\n<context> (Mandatory Tag)\n<instructions> (Mandatory Tag)\n<skills> (Mandatory Tag)\n<areas of knowledge> (Mandatory Tag)\n<next steps> (Mandatory Tag)\n<personality and style> (Mandatory Tag)\n<output format> (Mandatory Tag)\n<audience> (Optional)\n<examples> (Optional)\n<dont's> (Optional)"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.googleGemini",
+      "typeVersion": 1,
+      "position": [
+        2416,
+        320
+      ],
+      "id": "234bda85-b606-4fd8-b5f4-46d8516321eb",
+      "name": "Message a model",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "1IqOeed1O8cPXO2h",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "message": "=Here is your optimized prompt:\n\n{{ $('Prompt Creator').item.json.output }}\n\n",
+        "waitUserReply": false,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chat",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        -80
+      ],
+      "id": "92610283-b974-4111-8d28-2093fa8b5234",
+      "name": "Respond to Chat1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Question Generator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Question Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Question Generator": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Prompt Creator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt Creator": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Prompt Creator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model2": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Prompt tester",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory1": {
+      "ai_memory": [
+        [
+          {
+            "node": "Prompt tester",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory2": {
+      "ai_memory": [
+        [
+          {
+            "node": "Question Generator",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Respond to Chat": {
+      "main": [
+        [
+          {
+            "node": "Prompt Creator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prompt tester": {
+      "main": [
+        [
+          {
+            "node": "Feedback Analyzer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Feedback Analyzer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory3": {
+      "ai_memory": [
+        [
+          {
+            "node": "Feedback Analyzer",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Feedback Analyzer": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prompt tester",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Respond to Chat1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Message a model",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Item List Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Feedback Analyzer",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message a model": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "callerPolicy": "workflowsFromSameOwner",
+    "executionOrder": "v1",
+    "availableInMCP": false,
+    "saveExecutionProgress": true
+  },
+  "versionId": "b7f35af5-f9c7-426d-850c-693801336585",
+  "meta": {
+    "instanceId": "f5c0aa4b9eafc364ab683dfa61ac46a81d2fd0968f7dfc2f388ee5999e44c05a"
+  },
+  "id": "nGNPeY6UPYnyyZwq",
+  "tags": []
+}
