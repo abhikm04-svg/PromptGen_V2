@@ -73,8 +73,8 @@ PROMPT_TESTER_MODEL = 'gemini-2.5-pro'  # Using pro for testing
 ANALYZER_MODEL = 'gemini-2.5-pro'  # Using pro for analysis
 
 # Workflow settings
-MAX_ITERATIONS = 15
-TARGET_SCORE = 101
+MAX_ITERATIONS = 5
+TARGET_SCORE = 100
 
 # ============================================================================
 # 3. Data Classes for State Management
@@ -427,9 +427,9 @@ Based on your evaluation, rate the prompt's effectiveness on a scale of 0 to 100
 
 **Output Format:**
 Score: [0-100]
-Feedback: [Detailed feedback on how to improve the prompt]
+Feedback: [Points of improvement for the prompt]
 
-Only output the score and feedback. No additional information is required."""
+Only output the score and points of improvement as feedback. No additional information is required."""
     
     def analyze(self, prompt: str, output: str, stream_callback: Optional[Callable] = None) -> Tuple[int, str]:
         """Analyze prompt and output, return score (0-100) and feedback"""
