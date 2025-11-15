@@ -29,9 +29,14 @@ except ImportError:
 import os
 import json
 import re
-from typing import Dict, List, Tuple, Optional
-from dataclasses import dataclass
+import time
+from typing import Dict, List, Tuple, Optional, Callable
+from dataclasses import dataclass, field
 from datetime import datetime
+try:
+    import pandas as pd
+except ImportError:
+    pd = None  # pandas will be available in Streamlit environment
 
 # ============================================================================
 # 2. Configuration
@@ -77,6 +82,7 @@ class WorkflowState:
     best_prompt: str = ""
     best_score: int = 0
     best_output: str = ""
+    token_usage: List[Dict] = field(default_factory=list)  # Track token usage over time
     
     def __post_init__(self):
         if self.clarification_questions is None:
@@ -90,6 +96,15 @@ class WorkflowState:
             self.best_score = self.current_score
             self.best_prompt = self.current_prompt
             self.best_output = self.prompt_output
+    
+    def add_token_usage(self, timestamp: float, tokens: int, stage: str):
+        """Add token usage data point"""
+        self.token_usage.append({
+            'timestamp': timestamp,
+            'tokens': tokens,
+            'stage': stage,
+            'cumulative': sum(t['tokens'] for t in self.token_usage) + tokens
+        })
 
 # ============================================================================
 # 4. Question Generator Agent
@@ -114,7 +129,7 @@ When a user shares their idea, ask 3-5 relevant questions to gather essential in
 
 Ask these questions in a clear, conversational manner. Wait for the user's responses before proceeding. Your output should be ONLY the questions - do not create the prompt yet. Number each question clearly."""
     
-    def generate_questions(self, user_idea: str) -> List[str]:
+    def generate_questions(self, user_idea: str, stream_callback: Optional[Callable] = None) -> List[str]:
         """Generate clarification questions based on user's idea"""
         prompt = f"""{self.system_prompt}
 
@@ -123,8 +138,18 @@ User's idea: {user_idea}
 Please ask 3-5 relevant questions to clarify the requirements."""
         
         try:
-            response = self.model.generate_content(prompt)
-            questions_text = response.text.strip()
+            full_text = ""
+            if stream_callback:
+                # Stream the response
+                response = self.model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        stream_callback(chunk.text, "question_generator")
+                questions_text = full_text.strip()
+            else:
+                response = self.model.generate_content(prompt)
+                questions_text = response.text.strip()
             
             # Parse questions (numbered list)
             questions = self._parse_questions(questions_text)
@@ -188,7 +213,7 @@ class PromptGeneratorAgent:
 <dont's> (Optional)"""
     
     def generate_prompt(self, user_idea: str, user_answers: Dict[str, str], 
-                       feedback: str = "") -> str:
+                       feedback: str = "", stream_callback: Optional[Callable] = None) -> str:
         """Generate a prompt based on user idea and answers"""
         
         # Format user answers
@@ -216,8 +241,18 @@ User's clarification answers:
 Create a comprehensive prompt based on the above information. Return ONLY the prompt with XML tags."""
         
         try:
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
+            full_text = ""
+            if stream_callback:
+                # Stream the response
+                response = self.model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        stream_callback(chunk.text, "prompt_generator")
+                return full_text.strip()
+            else:
+                response = self.model.generate_content(prompt)
+                return response.text.strip()
         except Exception as e:
             print(f"Error generating prompt: {e}")
             return ""
@@ -235,12 +270,22 @@ class PromptTesterAgent:
             generation_config=genai.types.GenerationConfig(temperature=0.2)
         )
     
-    def test_prompt(self, prompt: str) -> str:
+    def test_prompt(self, prompt: str, stream_callback: Optional[Callable] = None) -> str:
         """Run the prompt on the model and return the output"""
         try:
             # The prompt itself is the input to the model
-            response = self.model.generate_content(prompt)
-            return response.text.strip()
+            full_text = ""
+            if stream_callback:
+                # Stream the response
+                response = self.model.generate_content(prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        stream_callback(chunk.text, "prompt_tester")
+                return full_text.strip()
+            else:
+                response = self.model.generate_content(prompt)
+                return response.text.strip()
         except Exception as e:
             print(f"Error testing prompt: {e}")
             return f"Error: {str(e)}"
@@ -258,113 +303,113 @@ class PromptAnalyzerAgent:
             generation_config=genai.types.GenerationConfig(temperature=0.2)
         )
         
-        self.analysis_prompt_template = """You will take the prompt [{prompt}] and benchmark it against the following parameters:
+        self.analysis_prompt_template = """You will take the prompt [{prompt}] and benchmark it extremely strictly against the following parameters:
 
 **Prompt Benchmark Attributes:**
 
 1. **Clarity & Unambiguity**: How easily understandable is the prompt's language and intent?
    - 1: Very ambiguous or confusing language.
-   - 3: Mostly clear, but requires some interpretation.
-   - 5: Perfectly clear, intent is obvious.
+   - 5: Mostly clear, but requires some interpretation.
+   - 10: Perfectly clear, intent is obvious.
 
 2. **Specificity & Detail**: How precisely does the prompt define the desired outcome and its characteristics?
    - 1: Very vague, lacks necessary details.
-   - 3: Moderately specific, includes some key details.
-   - 5: Highly specific, provides comprehensive details about the desired output.
+   - 5: Moderately specific, includes some key details.
+   - 10: Highly specific, provides comprehensive details about the desired output.
 
 3. **Contextual Sufficiency**: Does the prompt provide all necessary background information for the AI to understand the task domain?
    - 1: Lacks critical context, making the task difficult to perform accurately.
-   - 3: Provides some necessary context, but gaps remain.
-   - 5: Provides all relevant context required for the task.
+   - 5: Provides some necessary context, but gaps remain.
+   - 10: Provides all relevant context required for the task.
 
 4. **Constraint Definition**: How clearly are limitations (e.g., length, format, tone, exclusions, required elements) stated?
    - 1: No constraints defined, or constraints are unclear.
-   - 3: Some relevant constraints are mentioned but may be incomplete or slightly ambiguous.
-   - 5: All relevant constraints are clearly and explicitly defined.
+   - 5: Some relevant constraints are mentioned but may be incomplete or slightly ambiguous.
+   - 10: All relevant constraints are clearly and explicitly defined.
 
 5. **Role/Persona Clarity**: If a specific role or persona for the AI is requested, how clearly is it defined? (Score NA if no role is needed).
    - 1: Role is undefined or very confusing.
-   - 3: Role is mentioned but lacks detail or nuance.
-   - 5: Role is clearly defined with sufficient detail to guide the AI's perspective.
+   - 5: Role is mentioned but lacks detail or nuance.
+   - 10: Role is clearly defined with sufficient detail to guide the AI's perspective.
 
 6. **Task Definition**: How clearly is the primary goal or task articulated? What should the AI do?
    - 1: The core task is unclear or poorly defined.
-   - 3: The task is generally understandable but could be more precise.
-   - 5: The task is explicitly and accurately defined.
+   - 5: The task is generally understandable but could be more precise.
+   - 10: The task is explicitly and accurately defined.
 
 7. **Conciseness & Efficiency**: Is the prompt free from irrelevant information, redundancy, or excessive length?
    - 1: Very verbose, contains significant irrelevant information.
-   - 3: Mostly concise, with minor irrelevant parts.
-   - 5: Optimally concise, containing only necessary information.
+   - 5: Mostly concise, with minor irrelevant parts.
+   - 10: Optimally concise, containing only necessary information.
 
 8. **Structural Organization**: Is the prompt logically structured (e.g., using formatting, clear separation of instructions)?
    - 1: Disorganized, hard to follow instructions.
-   - 3: Moderately organized, structure could be improved.
-   - 5: Well-structured, logical flow, easy to parse.
+   - 5: Moderately organized, structure could be improved.
+   - 10: Well-structured, logical flow, easy to parse.
 
 9. **Instructional Effectiveness**: How likely are the specific instructions and phrasing to lead directly to the desired output, minimizing potential misinterpretation?
    - 1: Instructions are likely to be misinterpreted or fail.
-   - 3: Instructions are somewhat effective but could lead to deviations.
-   - 5: Instructions are highly effective and precisely guide the AI.
+   - 5: Instructions are somewhat effective but could lead to deviations.
+   - 10: Instructions are highly effective and precisely guide the AI.
 
 10. **Tone/Style Guidance**: How clearly is the desired tone (e.g., formal, friendly, technical) or writing style (e.g., simple, academic, bullet points) specified? (Score NA if not relevant).
     - 1: No guidance, or guidance is vague/contradictory.
-    - 3: Some guidance provided, but could be more specific.
-    - 5: Clear, specific, and consistent guidance on tone/style.
+    - 5: Some guidance provided, but could be more specific.
+    - 10: Clear, specific, and consistent guidance on tone/style.
 
-Next you will take the prompt output [{output}] and benchmark it against the following parameters:
+Next you will take the prompt output [{output}] and benchmark it extremely strictly against the following parameters:
 
 **Output Benchmark Attributes:**
 
 1. **Relevance to Prompt**: How directly does the output address the core request and topic of the prompt?
    - 1: Off-topic or completely misses the prompt's intent.
-   - 3: Partially relevant, addresses some aspects but deviates or includes irrelevant info.
-   - 5: Directly and fully relevant to the prompt's core request.
+   - 5: Partially relevant, addresses some aspects but deviates or includes irrelevant info.
+   - 10: Directly and fully relevant to the prompt's core request.
 
 2. **Factual Accuracy**: How correct is the factual information presented in the output? (Score NA if subjective/creative).
    - 1: Contains significant factual errors or hallucinations.
-   - 3: Mostly accurate, but contains minor inaccuracies.
-   - 5: Completely factually accurate.
+   - 5: Mostly accurate, but contains minor inaccuracies.
+   - 10: Completely factually accurate.
 
 3. **Completeness of Response**: Does the output address all explicit and implicit requirements, questions, or parts of the prompt?
    - 1: Misses major requirements or questions asked.
-   - 3: Addresses most requirements but omits minor aspects.
-   - 5: Fully addresses all requirements specified in the prompt.
+   - 5: Addresses most requirements but omits minor aspects.
+   - 10: Fully addresses all requirements specified in the prompt.
 
 4. **Coherence & Logical Flow**: Is the output well-organized, with logical connections between ideas/sentences/paragraphs?
    - 1: Incoherent, disjointed, very difficult to follow.
-   - 3: Mostly coherent, but some transitions or points are unclear.
-   - 5: Very coherent, logical flow, easy to follow.
+   - 5: Mostly coherent, but some transitions or points are unclear.
+   - 10: Very coherent, logical flow, easy to follow.
 
 5. **Clarity & Readability**: Is the language used clear, grammatically correct, and easy for the target audience to understand?
    - 1: Very difficult to understand, poor grammar, confusing language.
-   - 3: Mostly clear, but some awkward phrasing or minor grammatical errors.
-   - 5: Very clear, well-written, and easily readable.
+   - 5: Mostly clear, but some awkward phrasing or minor grammatical errors.
+   - 10: Very clear, well-written, and easily readable.
 
 6. **Constraint Adherence**: Does the output respect all constraints (length, format, style, exclusions) specified in the prompt?
    - 1: Ignores most or all specified constraints.
-   - 3: Meets some constraints but violates others.
-   - 5: Meets all specified constraints perfectly.
+   - 5: Meets some constraints but violates others.
+   - 10: Meets all specified constraints perfectly.
 
 7. **Tone & Style Consistency**: Does the output consistently match the tone and style requested (or implied) by the prompt?
    - 1: Uses a completely inappropriate tone/style or is highly inconsistent.
-   - 3: Mostly matches the requested tone/style but has inconsistencies.
-   - 5: Perfectly and consistently matches the requested tone/style.
+   - 5: Mostly matches the requested tone/style but has inconsistencies.
+   - 10: Perfectly and consistently matches the requested tone/style.
 
 8. **Formatting & Presentation**: Is the output presented in a clean, usable, and readable format (using markdown, lists, code blocks, etc., appropriately)?
    - 1: Poor or absent formatting, difficult to read/use.
-   - 3: Adequate formatting, generally readable.
-   - 5: Excellent formatting and presentation enhances readability and usability.
+   - 5: Adequate formatting, generally readable.
+   - 10: Excellent formatting and presentation enhances readability and usability.
 
 9. **Depth & Elaboration**: Does the output provide sufficient detail, explanation, or depth appropriate for the prompt's request? (Consider if the prompt asked for brevity vs. detail).
    - 1: Too superficial, lacks necessary detail or explanation.
-   - 3: Provides adequate depth for the request.
-   - 5: Provides comprehensive and insightful detail, exceeding expectations where appropriate.
+   - 5: Provides adequate depth for the request.
+   - 10: Provides comprehensive and insightful detail, exceeding expectations where appropriate.
 
 10. **Helpfulness & Actionability**: How well does the output actually achieve the underlying goal of the prompt? Is it useful, practical, or actionable?
     - 1: Not helpful, doesn't achieve the prompt's goal.
-    - 3: Somewhat helpful, partially achieves the goal.
-    - 5: Very helpful, effectively achieves the prompt's goal, potentially offering extra value.
+    - 5: Somewhat helpful, partially achieves the goal.
+    - 10: Very helpful, effectively achieves the prompt's goal, potentially offering extra value.
 
 Based on your evaluation, rate the prompt's effectiveness on a scale of 0 to 100 with 100 being perfect and 0 being completely unusable. Be extremely strict during benchmarking - you should ensure that the prompt is absolutely perfect. 
 
@@ -374,7 +419,7 @@ Feedback: [Detailed feedback on how to improve the prompt]
 
 Only output the score and feedback. No additional information is required."""
     
-    def analyze(self, prompt: str, output: str) -> Tuple[int, str]:
+    def analyze(self, prompt: str, output: str, stream_callback: Optional[Callable] = None) -> Tuple[int, str]:
         """Analyze prompt and output, return score (0-100) and feedback"""
         analysis_prompt = self.analysis_prompt_template.format(
             prompt=prompt,
@@ -382,8 +427,18 @@ Only output the score and feedback. No additional information is required."""
         )
         
         try:
-            response = self.model.generate_content(analysis_prompt)
-            response_text = response.text.strip()
+            full_text = ""
+            if stream_callback:
+                # Stream the response
+                response = self.model.generate_content(analysis_prompt, stream=True)
+                for chunk in response:
+                    if chunk.text:
+                        full_text += chunk.text
+                        stream_callback(chunk.text, "analyzer")
+                response_text = full_text.strip()
+            else:
+                response = self.model.generate_content(analysis_prompt)
+                response_text = response.text.strip()
             
             # Parse score and feedback
             score, feedback = self._parse_response(response_text)
@@ -434,18 +489,20 @@ class PromptOptimizerWorkflow:
         self.analyzer = PromptAnalyzerAgent()
         self.state = WorkflowState()
     
-    def start_workflow(self, user_idea: str) -> List[str]:
+    def start_workflow(self, user_idea: str, stream_callback: Optional[Callable] = None) -> List[str]:
         """Start the workflow by generating clarification questions"""
         self.state.user_idea = user_idea
-        self.state.clarification_questions = self.question_generator.generate_questions(user_idea)
+        self.state.clarification_questions = self.question_generator.generate_questions(user_idea, stream_callback)
         return self.state.clarification_questions
     
     def submit_answers(self, answers: Dict[str, str]):
         """Submit user answers to clarification questions"""
         self.state.user_answers = answers
     
-    def run_optimization_loop(self) -> Dict:
-        """Run the main optimization loop"""
+    def run_optimization_loop(self, stream_callback: Optional[Callable] = None, 
+                             status_callback: Optional[Callable] = None,
+                             token_callback: Optional[Callable] = None) -> Dict:
+        """Run the main optimization loop with streaming support"""
         results = {
             'final_prompt': '',
             'final_score': 0,
@@ -454,46 +511,86 @@ class PromptOptimizerWorkflow:
             'history': []
         }
         
+        # Helper function to estimate tokens (rough estimate: ~4 chars per token)
+        def estimate_tokens(text: str) -> int:
+            return len(text) // 4
+        
         # Generate initial prompt
         feedback = ""
         
         for iteration in range(MAX_ITERATIONS):
             self.state.iteration = iteration + 1
             
+            if status_callback:
+                status_callback(f"Iteration {iteration + 1}/{MAX_ITERATIONS}: Generating prompt...")
+            
             # Generate prompt
-            print(f"\n--- Iteration {iteration + 1}/{MAX_ITERATIONS} ---")
-            print("Generating prompt...")
+            if stream_callback:
+                stream_callback(f"\n{'='*60}\n[Iteration {iteration + 1}/{MAX_ITERATIONS}]\n{'='*60}\n", "system")
+                stream_callback("🤖 Prompt Generator: Generating optimized prompt...\n", "system")
             
             self.state.current_prompt = self.prompt_generator.generate_prompt(
                 self.state.user_idea,
                 self.state.user_answers,
-                feedback
+                feedback,
+                stream_callback
             )
+            
+            if token_callback:
+                tokens = estimate_tokens(self.state.current_prompt)
+                token_callback(time.time(), tokens, f"prompt_gen_iter_{iteration + 1}")
             
             if not self.state.current_prompt:
-                print("Error: Failed to generate prompt")
+                if stream_callback:
+                    stream_callback("❌ Error: Failed to generate prompt\n", "error")
                 break
             
-            print(f"Prompt generated ({len(self.state.current_prompt)} chars)")
+            if stream_callback:
+                stream_callback(f"\n✅ Prompt generated ({len(self.state.current_prompt)} characters)\n", "system")
             
             # Test prompt
-            print("Testing prompt...")
-            self.state.prompt_output = self.prompt_tester.test_prompt(self.state.current_prompt)
-            print(f"Output generated ({len(self.state.prompt_output)} chars)")
+            if status_callback:
+                status_callback(f"Iteration {iteration + 1}/{MAX_ITERATIONS}: Testing prompt...")
+            
+            if stream_callback:
+                stream_callback("🧪 Prompt Tester: Running prompt on model...\n", "system")
+            
+            self.state.prompt_output = self.prompt_tester.test_prompt(
+                self.state.current_prompt,
+                stream_callback
+            )
+            
+            if token_callback:
+                tokens = estimate_tokens(self.state.prompt_output)
+                token_callback(time.time(), tokens, f"prompt_test_iter_{iteration + 1}")
+            
+            if stream_callback:
+                stream_callback(f"\n✅ Output generated ({len(self.state.prompt_output)} characters)\n", "system")
             
             # Analyze prompt and output
-            print("Analyzing prompt and output...")
+            if status_callback:
+                status_callback(f"Iteration {iteration + 1}/{MAX_ITERATIONS}: Analyzing results...")
+            
+            if stream_callback:
+                stream_callback("📊 Prompt Analyzer: Evaluating prompt and output...\n", "system")
+            
             score, feedback = self.analyzer.analyze(
                 self.state.current_prompt,
-                self.state.prompt_output
+                self.state.prompt_output,
+                stream_callback
             )
+            
+            if token_callback:
+                tokens = estimate_tokens(feedback)
+                token_callback(time.time(), tokens, f"analyzer_iter_{iteration + 1}")
             
             self.state.current_score = score
             self.state.feedback = feedback
             self.state.update_best()
             
-            print(f"Score: {score}/100")
-            print(f"Feedback: {feedback[:200]}...")
+            if stream_callback:
+                stream_callback(f"\n📈 Score: {score}/100\n", "score")
+                stream_callback(f"💬 Feedback: {feedback[:200]}...\n\n", "feedback")
             
             # Store iteration history
             results['history'].append({
@@ -506,7 +603,8 @@ class PromptOptimizerWorkflow:
             
             # Check if we've reached target score
             if score >= TARGET_SCORE:
-                print(f"\n✓ Target score achieved! ({score}/100)")
+                if stream_callback:
+                    stream_callback(f"\n🎉 Target score achieved! ({score}/100)\n", "success")
                 results['final_prompt'] = self.state.current_prompt
                 results['final_score'] = score
                 results['iterations'] = iteration + 1
@@ -515,7 +613,8 @@ class PromptOptimizerWorkflow:
             
             # If this is the last iteration, use best prompt
             if iteration == MAX_ITERATIONS - 1:
-                print(f"\n⚠ Maximum iterations reached. Using best prompt (score: {self.state.best_score}/100)")
+                if stream_callback:
+                    stream_callback(f"\n⚠️ Maximum iterations reached. Best score: {self.state.best_score}/100\n", "warning")
                 results['final_prompt'] = self.state.best_prompt
                 results['final_score'] = self.state.best_score
                 results['iterations'] = MAX_ITERATIONS
@@ -531,14 +630,18 @@ def initialize_workflow() -> PromptOptimizerWorkflow:
     """Initialize the workflow - call this at the start of Streamlit session"""
     return PromptOptimizerWorkflow()
 
-def get_clarification_questions(workflow: PromptOptimizerWorkflow, user_idea: str) -> List[str]:
+def get_clarification_questions(workflow: PromptOptimizerWorkflow, user_idea: str, 
+                                stream_callback: Optional[Callable] = None) -> List[str]:
     """Get clarification questions for user idea"""
-    return workflow.start_workflow(user_idea)
+    return workflow.start_workflow(user_idea, stream_callback)
 
-def process_answers_and_optimize(workflow: PromptOptimizerWorkflow, answers: Dict[str, str]) -> Dict:
+def process_answers_and_optimize(workflow: PromptOptimizerWorkflow, answers: Dict[str, str],
+                                stream_callback: Optional[Callable] = None,
+                                status_callback: Optional[Callable] = None,
+                                token_callback: Optional[Callable] = None) -> Dict:
     """Process user answers and run optimization loop"""
     workflow.submit_answers(answers)
-    return workflow.run_optimization_loop()
+    return workflow.run_optimization_loop(stream_callback, status_callback, token_callback)
 
 # ============================================================================
 # 10. Testing and Validation Functions
@@ -642,6 +745,10 @@ def main():
         st.session_state.stage = 'idea'
         st.session_state.questions = []
         st.session_state.results = None
+        st.session_state.terminal_output = ""
+        st.session_state.token_data = []
+        st.session_state.current_status = ""
+        st.session_state.is_thinking = False
     
     # Stage 1: Get user idea
     if st.session_state.stage == 'idea':
@@ -656,14 +763,53 @@ def main():
         
         if st.button('Generate Clarification Questions', type='primary'):
             if user_idea.strip():
-                with st.spinner('Generating clarification questions...'):
-                    try:
-                        questions = get_clarification_questions(st.session_state.workflow, user_idea)
+                st.session_state.is_thinking = True
+                st.session_state.terminal_output = ""
+                st.session_state.token_data = []
+                
+                # Create layout for thinking status, terminal, and graph
+                status_col, _ = st.columns([3, 1])
+                
+                with status_col:
+                    status_placeholder = st.empty()
+                    terminal_placeholder = st.empty()
+                
+                # Token graph placeholder
+                graph_placeholder = st.empty()
+                
+                def stream_callback(text, agent_type="default"):
+                    st.session_state.terminal_output += text
+                    terminal_placeholder.code(
+                        st.session_state.terminal_output,
+                        language='text',
+                        line_numbers=False
+                    )
+                
+                def token_callback(timestamp, tokens, stage):
+                    st.session_state.token_data.append({
+                        'timestamp': timestamp,
+                        'tokens': tokens,
+                        'stage': stage
+                    })
+                    if st.session_state.token_data and pd is not None:
+                        df = pd.DataFrame(st.session_state.token_data)
+                        df['cumulative'] = df['tokens'].cumsum()
+                        graph_placeholder.line_chart(df.set_index('timestamp')['cumulative'])
+                
+                try:
+                    with status_placeholder.status("🤔 Thinking... Generating clarification questions", state="running"):
+                        questions = get_clarification_questions(
+                            st.session_state.workflow, 
+                            user_idea,
+                            stream_callback
+                        )
                         st.session_state.questions = questions
+                        st.session_state.is_thinking = False
                         st.session_state.stage = 'questions'
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error generating questions: {str(e)}")
+                except Exception as e:
+                    st.session_state.is_thinking = False
+                    st.error(f"Error generating questions: {str(e)}")
             else:
                 st.warning("Please enter a prompt idea first.")
     
@@ -691,14 +837,68 @@ def main():
         with col2:
             if st.button('Submit Answers & Optimize →', type='primary'):
                 if len(answers) == len(st.session_state.questions):
-                    with st.spinner('Optimizing prompt... This may take a few minutes. Please wait...'):
-                        try:
-                            results = process_answers_and_optimize(st.session_state.workflow, answers)
+                    st.session_state.is_thinking = True
+                    st.session_state.terminal_output = ""
+                    st.session_state.token_data = []
+                    
+                    # Create two-column layout: terminal on left, graph on right
+                    left_col, right_col = st.columns([2, 1])
+                    
+                    with left_col:
+                        status_placeholder = st.empty()
+                        terminal_placeholder = st.empty()
+                    
+                    with right_col:
+                        st.subheader("📊 Token Usage")
+                        graph_placeholder = st.empty()
+                    
+                    def stream_callback(text, agent_type="default"):
+                        st.session_state.terminal_output += text
+                        # Limit terminal output to last 5000 chars for performance
+                        display_text = st.session_state.terminal_output[-5000:]
+                        terminal_placeholder.code(
+                            display_text,
+                            language='text',
+                            line_numbers=False
+                        )
+                    
+                    def status_callback(status):
+                        st.session_state.current_status = status
+                        status_placeholder.status(f"🤔 {status}", state="running")
+                    
+                    def token_callback(timestamp, tokens, stage):
+                        st.session_state.token_data.append({
+                            'timestamp': timestamp,
+                            'tokens': tokens,
+                            'stage': stage
+                        })
+                        if st.session_state.token_data and pd is not None:
+                            df = pd.DataFrame(st.session_state.token_data)
+                            df['cumulative'] = df['tokens'].cumsum()
+                            # Create time-based index for better visualization
+                            if len(df) > 1:
+                                df['time_elapsed'] = (df['timestamp'] - df['timestamp'].iloc[0])
+                                graph_placeholder.line_chart(
+                                    df.set_index('time_elapsed')['cumulative'],
+                                    height=300
+                                )
+                    
+                    try:
+                        with status_placeholder.status("🤔 Thinking... Starting optimization", state="running"):
+                            results = process_answers_and_optimize(
+                                st.session_state.workflow, 
+                                answers,
+                                stream_callback,
+                                status_callback,
+                                token_callback
+                            )
                             st.session_state.results = results
+                            st.session_state.is_thinking = False
                             st.session_state.stage = 'results'
                             st.rerun()
-                        except Exception as e:
-                            st.error(f"Error during optimization: {str(e)}")
+                    except Exception as e:
+                        st.session_state.is_thinking = False
+                        st.error(f"Error during optimization: {str(e)}")
                 else:
                     st.warning("Please answer all questions before submitting.")
     
