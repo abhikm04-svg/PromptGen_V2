@@ -222,7 +222,8 @@ class PromptGeneratorAgent:
 <output format> (Mandatory Tag)
 <audience> (Optional)
 <examples> (Optional)
-<dont's> (Optional)"""
+<dont's> (Optional)
+Ensure that the final prompt output when the user asks the prompt to the AI model should be in the same language as the user's idea and should be in user readable format and non xml tagged format. """
     
     def generate_prompt(self, user_idea: str, user_answers: Dict[str, str], 
                        feedback: str = "", stream_callback: Optional[Callable] = None) -> str:
