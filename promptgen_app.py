@@ -220,6 +220,7 @@ class PromptGeneratorAgent:
 <next steps> (Mandatory Tag)
 <personality and style> (Mandatory Tag)
 <output format> (Mandatory Tag)
+<additional instructions> (Mandatory Tag) (To be filled by the user)
 <audience> (Optional)
 <examples> (Optional)
 <dont's> (Optional)
