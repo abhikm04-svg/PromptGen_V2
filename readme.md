@@ -1,4 +1,4 @@
-<https://promptgen-gemini.streamlit.app/#prompt-optimizer>
+**[🔗 Live Demo](https://promptgen-gemini.streamlit.app/#prompt-optimizer)**
 # 🧙 PromptGen V2: AI-Powered Prompt Optimizer
 
 PromptGen V2 is a sophisticated, multi-agent application designed to help you craft the perfect prompt for your use case. Using a collaborative workflow, 
@@ -46,7 +46,7 @@ To run this application locally, follow these steps:
 
 1.  **Clone the repository:**
     ```bash
-    git clone <https://github.com/abhikm04-svg/PromptGen_V2>
+    git clone https://github.com/abhikm04-svg/PromptGen_V2.git
     cd PromptGen_V2
     ```
 

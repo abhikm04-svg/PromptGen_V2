@@ -30,6 +30,7 @@ import os
 import json
 import re
 import time
+import io
 import html
 from typing import Dict, List, Tuple, Optional, Callable
 from dataclasses import dataclass, field
@@ -43,12 +44,10 @@ try:
     import matplotlib
     matplotlib.use('Agg')  # Use non-interactive backend
     import matplotlib.pyplot as plt
-    import io
     HAS_MATPLOTLIB = True
 except ImportError:
     HAS_MATPLOTLIB = False
     plt = None
-    io = None
 
 # ============================================================================
 # 2. Configuration
@@ -72,9 +71,32 @@ PROMPT_GENERATOR_MODEL = 'gemini-2.5-flash'  # Using flash for prompt generation
 PROMPT_TESTER_MODEL = 'gemini-2.5-pro'  # Using pro for testing
 ANALYZER_MODEL = 'gemini-2.5-pro'  # Using pro for analysis
 
+# Fallback models if primary models are unavailable
+FALLBACK_MODELS = {
+    'gemini-2.5-flash': ['gemini-2.0-flash', 'gemini-1.5-flash'],
+    'gemini-2.5-pro': ['gemini-2.0-pro', 'gemini-1.5-pro'],
+}
+
 # Workflow settings
 MAX_ITERATIONS = 5
 TARGET_SCORE = 100
+
+def _create_model(model_name: str, **kwargs):
+    """Create a GenerativeModel with fallback support."""
+    try:
+        model = genai.GenerativeModel(model_name, **kwargs)
+        return model
+    except Exception:
+        # Try fallback models
+        for fallback in FALLBACK_MODELS.get(model_name, []):
+            try:
+                model = genai.GenerativeModel(fallback, **kwargs)
+                print(f"Using fallback model: {fallback} (instead of {model_name})")
+                return model
+            except Exception:
+                continue
+        # Last resort: return the original model and let it fail at generation time
+        return genai.GenerativeModel(model_name, **kwargs)
 
 # ============================================================================
 # 3. Data Classes for State Management
@@ -126,7 +148,7 @@ class QuestionGeneratorAgent:
     """Generates 3-5 clarification questions based on user's prompt idea"""
     
     def __init__(self, model_name: str = PROMPT_GENERATOR_MODEL):
-        self.model = genai.GenerativeModel(model_name)
+        self.model = _create_model(model_name)
         self.system_prompt = """You are a Question Generator AI agent. Your role is to help users define their prompt requirements by asking comprehensive, targeted questions.
 
 When a user shares their idea, ask 3-5 relevant questions to gather essential information:
@@ -155,9 +177,12 @@ Please ask 3-5 relevant questions to clarify the requirements."""
                 # Stream the response
                 response = self.model.generate_content(prompt, stream=True)
                 for chunk in response:
-                    if chunk.text:
-                        full_text += chunk.text
-                        stream_callback(chunk.text, "question_generator")
+                    try:
+                        if chunk.text:
+                            full_text += chunk.text
+                            stream_callback(chunk.text, "question_generator")
+                    except (ValueError, AttributeError):
+                        continue  # Skip chunks blocked by safety filters
                 questions_text = full_text.strip()
             else:
                 response = self.model.generate_content(prompt)
@@ -207,7 +232,7 @@ class PromptGeneratorAgent:
     """Generates optimized prompts based on user idea and clarification answers"""
     
     def __init__(self, model_name: str = PROMPT_GENERATOR_MODEL):
-        self.model = genai.GenerativeModel(
+        self.model = _create_model(
             model_name,
             generation_config=genai.types.GenerationConfig(temperature=0.1)
         )
@@ -260,9 +285,12 @@ Create a comprehensive prompt based on the above information. Return ONLY the pr
                 # Stream the response
                 response = self.model.generate_content(prompt, stream=True)
                 for chunk in response:
-                    if chunk.text:
-                        full_text += chunk.text
-                        stream_callback(chunk.text, "prompt_generator")
+                    try:
+                        if chunk.text:
+                            full_text += chunk.text
+                            stream_callback(chunk.text, "prompt_generator")
+                    except (ValueError, AttributeError):
+                        continue
                 return full_text.strip()
             else:
                 response = self.model.generate_content(prompt)
@@ -279,7 +307,7 @@ class PromptTesterAgent:
     """Tests the generated prompt by running it on the model"""
     
     def __init__(self, model_name: str = PROMPT_TESTER_MODEL):
-        self.model = genai.GenerativeModel(
+        self.model = _create_model(
             model_name,
             generation_config=genai.types.GenerationConfig(temperature=0.2)
         )
@@ -293,9 +321,12 @@ class PromptTesterAgent:
                 # Stream the response
                 response = self.model.generate_content(prompt, stream=True)
                 for chunk in response:
-                    if chunk.text:
-                        full_text += chunk.text
-                        stream_callback(chunk.text, "prompt_tester")
+                    try:
+                        if chunk.text:
+                            full_text += chunk.text
+                            stream_callback(chunk.text, "prompt_tester")
+                    except (ValueError, AttributeError):
+                        continue
                 return full_text.strip()
             else:
                 response = self.model.generate_content(prompt)
@@ -312,7 +343,7 @@ class PromptAnalyzerAgent:
     """Analyzes and scores prompts based on multiple parameters"""
     
     def __init__(self, model_name: str = ANALYZER_MODEL):
-        self.model = genai.GenerativeModel(
+        self.model = _create_model(
             model_name,
             generation_config=genai.types.GenerationConfig(temperature=0.2)
         )
@@ -446,9 +477,12 @@ Only output the score and points of improvement as feedback. No additional infor
                 # Stream the response
                 response = self.model.generate_content(analysis_prompt, stream=True)
                 for chunk in response:
-                    if chunk.text:
-                        full_text += chunk.text
-                        stream_callback(chunk.text, "analyzer")
+                    try:
+                        if chunk.text:
+                            full_text += chunk.text
+                            stream_callback(chunk.text, "analyzer")
+                    except (ValueError, AttributeError):
+                        continue
                 response_text = full_text.strip()
             else:
                 response = self.model.generate_content(analysis_prompt)
@@ -604,7 +638,8 @@ class PromptOptimizerWorkflow:
             
             if stream_callback:
                 stream_callback(f"\n📈 Score: {score}/100\n", "score")
-                stream_callback(f"💬 Feedback: {feedback[:200]}...\n\n", "feedback")
+                feedback_preview = feedback[:200] + '...' if len(feedback) > 200 else feedback
+                stream_callback(f"💬 Feedback: {feedback_preview}\n\n", "feedback")
             
             # Store iteration history
             results['history'].append({
@@ -745,6 +780,14 @@ def main():
     except ImportError:
         print("Streamlit is not installed. This is a Streamlit application.")
         return
+    
+    # Page configuration — must be the first Streamlit command
+    st.set_page_config(
+        page_title="PromptGen V2 — AI Prompt Optimizer",
+        page_icon="🧙",
+        layout="centered",
+        initial_sidebar_state="collapsed"
+    )
     
     # Configure API key from Streamlit secrets
     if 'GOOGLE_API_KEY' in st.secrets:

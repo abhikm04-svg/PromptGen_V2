@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv/
+.env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Jupyter Notebook
+.ipynb_checkpoints/
+prompt_optimizer_workflow.ipynb
+
+# Streamlit secrets (NEVER commit API keys)
+.streamlit/secrets.toml
+
+# OS files
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# Local-only / development files
+Modelfile
+ollama
+New Text Document.txt
+
+# n8n workflow export (reference only)
+POW.json
+
+# Logs
+*.log
